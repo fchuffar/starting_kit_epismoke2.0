@@ -1,0 +1,222 @@
+---
+title: "Smoking Status Prediction Challenge 2.0 (epismoke2.0)"
+subtitle: "Compte-rendu à compléter"
+author: "Florent Chuffart"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r, echo=FALSE, eval=TRUE}
+knitr::opts_chunk$set(collapse=TRUE, comment = "#>", fig.width=9, fig.height=6, eval=TRUE, echo=FALSE, results="hide")
+``` 
+
+Ce document propose une méthode pour résoudre le *data challenge* `epismoke2.0`.
+
+L’**objectif** est de prédire le statut tabagique des patients dans le jeu de données `data_test`.
+
+Dans ce document nous allons essentiellement travailler du le jeu de données d’apprentissage `data_train`.
+
+
+# Statistiques descriptives
+
+**Le jeu de donnée `data_train`**
+
+```{r loading_data, echo=TRUE, results="verbatim"}
+data_train = readRDS(file = "data_train.rds")
+data_test = readRDS(file = "data_test.rds")
+dim(data_train)
+dim(data_test)
+head(data_train[,1:6])
+```
+
+Etudier la distribution des valeurs de méthylation.
+
+```{r echo=TRUE, results="verbatim"}
+probes = colnames(data_train)[5:10004]
+head(data_train[,probes[1:10]])
+```
+
+Distribution du statut tabagique des patients dans `data_train`
+
+```{r, echo=TRUE, results="verbatim"}
+head(data_train[,1:4])
+table(data_train$smoking_status)
+```
+
+
+# `data_train1` et `data_train2`
+
+
+Nous séparons ici `data_train` en 2 jeux de données `data_train1` et `data_train2`.
+
+```{r, echo=TRUE, results="verbatim"}
+set.seed(1)
+data_train1 = data_train[sample(1:nrow(data_train), round(nrow(data_train) * .75)),]
+dim(data_train1)
+data_train2 = data_train[setdiff(rownames(data_train), rownames(data_train1)),]
+dim(data_train2)
+
+prop.table(table(data_train1$smoking_status))
+prop.table(table(data_train2$smoking_status))
+```
+
+L’ojectif maintenant est : 
+
+- construire et entrainer un modèle simple sur `data_train1`
+- évaluer ce modèle sur `data_train2`
+
+
+# Méthode SIS
+
+La method SIS [Shurely Independant Screening, Zhang HH. J R Stat Soc Series B Stat Methodol. 2008] appliquée aux sondes consiste à 
+réaliser autant d’ANOVA du type $probe \sim smoking_status$ qu’il y a de sondes
+
+1. Commenmtez le code suivant : 
+
+```{r screening, echo=TRUE, results="verbatim"}
+siscreening = function(data_train) {
+  probes = colnames(data_train)[5:10004]        # to be update
+  pval_fisher = c()
+  beta1 = c()
+  beta2 = c()
+  r2 = c()
+  for (p in probes) {
+    m = lm(data_train[,p]~data_train[,"smoking_status"])    
+    pval_fisher = c(pval_fisher, anova(m)[1,5])  
+    beta1 = c(beta1, m$coefficients[[2]]) 
+    beta2 = c(beta2, m$coefficients[[3]]) 
+    r2 = c(r2, summary(m)$r.squared)
+  }
+  names(pval_fisher)  = probes
+  names(beta1)         = probes  
+  names(beta2)         = probes  
+  names(r2)           = probes  
+  return(data.frame(pval_fisher=pval_fisher, beta1=beta1, beta2=beta2, r2=r2))
+}
+if (!exists("msiscreening")) {msiscreening = memoise::memoise(siscreening)}
+
+sis_res = msiscreening(data_train1)  
+head(sis_res)
+```
+
+2. Peut-on tracer le **volcano plot** correspondant au screening ?
+
+3. Commentez le graphique en abscisse le $R^2$ de chaque modéle indépendant et en ordonnée le $-log10(pval_{fisher})$ correspondant. Pensez aux titres. Commentez.
+
+```{r volcano1, echo=TRUE, results="verbatim"}
+layout(matrix(1:2, 1), respect=TRUE)
+plot(sis_res$r2, -log10(sis_res$pval))                  
+```
+
+```{r head8_sis, fig.height=9, echo=TRUE, results="verbatim"}
+sis_probes = rownames(sis_res)[order(sis_res$pval_fisher)]
+head(sis_probes,6)
+```
+
+4. Commentez le code et les graphiques suivants : 
+
+```{r sis_1, echo=TRUE, results="verbatim"}
+m1 = lm(data_train1[,sis_probes[1]]~data_train1[,"smoking_status"])
+m2 = lm(data_train1[,sis_probes[2]]~data_train1[,"smoking_status"])
+m3 = lm(data_train1[,sis_probes[3]]~data_train1[,"smoking_status"])
+m4 = lm(data_train1[,sis_probes[4]]~data_train1[,"smoking_status"])
+m5 = lm(data_train1[,sis_probes[5]]~data_train1[,"smoking_status"])
+m6 = lm(data_train1[,sis_probes[6]]~data_train1[,"smoking_status"])
+layout(matrix(1:6, 2), respect=TRUE)
+boxplot(data_train1[,sis_probes[1]]~data_train1[,"smoking_status"], main=paste0(sis_probes[1], "~smoking_status R^2: ", signif(summary(m1)$r.squared, 3)))
+boxplot(data_train1[,sis_probes[2]]~data_train1[,"smoking_status"], main=paste0(sis_probes[2], "~smoking_status R^2: ", signif(summary(m2)$r.squared, 3)))
+boxplot(data_train1[,sis_probes[3]]~data_train1[,"smoking_status"], main=paste0(sis_probes[3], "~smoking_status R^2: ", signif(summary(m3)$r.squared, 3)))
+boxplot(data_train1[,sis_probes[4]]~data_train1[,"smoking_status"], main=paste0(sis_probes[4], "~smoking_status R^2: ", signif(summary(m4)$r.squared, 3)))
+boxplot(data_train1[,sis_probes[5]]~data_train1[,"smoking_status"], main=paste0(sis_probes[5], "~smoking_status R^2: ", signif(summary(m5)$r.squared, 3)))
+boxplot(data_train1[,sis_probes[6]]~data_train1[,"smoking_status"], main=paste0(sis_probes[6], "~smoking_status R^2: ", signif(summary(m6)$r.squared, 3)))
+```
+
+
+
+5. Le code suivant réalise l’ACP de `data_train1` pour les 10 premières `sis_probes`.
+   Tracez le barycentre de chacun des trois groupes (`current`, `former`, `never`).
+   Commentez.
+
+
+```{r}
+data = as.matrix(data_train1[, sis_probes[1:10]])
+col = as.numeric(data_train1$smoking_status)
+pca = prcomp(data, scale=TRUE)
+v = pca$sdev * pca$sdev
+p = v / sum(v) * 100
+layout(matrix(1:6,2, byrow=FALSE), respect=TRUE)
+barplot(p)
+i=3
+j=2
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+i=1
+j=3
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+i=1
+j=2
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+i=4
+j=5
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+plot.new()
+legend("bottomright", levels(data_train1$smoking_status), pch=1, col=1:length(levels(data_train1$smoking_status)))
+``` 
+
+6. Le code suivant construit plusieurs modèles prédisant la colonne `current01`. Commentez l’évolution de l’érreur.
+
+  
+```{r echo=TRUE, results="verbatim"}
+model_sis_i = function(data_train, i, screening_func=msiscreening) { 
+  print(paste0("model sis ", i))
+  sis_res = screening_func(data_train)  
+  sis_probes = rownames(sis_res)[order(sis_res$pval_fisher)]
+  formula = as.formula(paste0(c("current01~1", sis_probes[0:i]), collapse="+")) ; 
+  # print(formula)
+  # foo = rbind(
+  #   c(0, 0 , 0, rep(0, 10000)),
+  #   c(0, 0 , 0, rep(1, 10000)),
+  #   c(1, 1 , 1, rep(0, 10000)),
+  #   c(1, 1 , 1, rep(1, 10000))
+  # )
+  # colnames(foo) = colnames(data_train)[-1]
+  # bar = data.frame(smoking_status=rep("never",4), foo)
+  # data_train_enh = rbind(data_train, bar)
+  data_train_enh = data_train
+  dim(data_train_enh)
+  m = glm(formula, data_train_enh, family=binomial(link="logit"))
+  return(m)
+}
+
+
+err1 = c()
+err2 = c()
+
+for (i in 1:50) {
+  print(i)
+  m = model_sis_i(data_train1, i)
+  pred_train1 = predict.glm(m, data_train1, type="response")
+  pred_train2 = predict.glm(m, data_train2, type="response")
+  err1 = c(err1, sum(ifelse(pred_train1>0.5, 1, 0) != data_train1$current01) / nrow(data_train1))
+  err2 = c(err2, sum(ifelse(pred_train2>0.5, 1, 0) != data_train2$current01) / nrow(data_train2))
+} 
+
+plot(err1)
+points(err2, col=2)
+
+```
+
+7. En vous fondant sur ce code. Construisez un modèle qui prédit les colonnes `former01`, `never01`, puis `smoking_status`
+
+# Information de session
+
+```{r, results="verbatim"}
+sessionInfo()
+```
+
+
+
