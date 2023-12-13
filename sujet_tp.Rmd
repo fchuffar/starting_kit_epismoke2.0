@@ -34,11 +34,12 @@ dim(data_test)
 head(data_train[,1:6])
 ```
 
-Etudier la distribution des valeurs de méthylation.
+Etudiez la distribution des valeurs de méthylation.
 
 ```{r echo=TRUE, results="verbatim"}
 probes = colnames(data_train)[5:10004]
 head(data_train[,probes[1:10]])
+plot(density(as.matrix(data_train[,probes])))
 ```
 
 Distribution du statut tabagique des patients dans `data_train`
@@ -63,6 +64,19 @@ dim(data_train2)
 
 prop.table(table(data_train1$smoking_status))
 prop.table(table(data_train2$smoking_status))
+
+data_train1_enh = data_train1
+# foo = rbind(
+#   ENH1=c(0, 0, 0, apply(data_train1[,probes], 2, mean)),
+#   ENH2=c(1, 1, 1, apply(data_train1[,probes], 2, mean))
+# )
+# colnames(foo) = colnames(data_train1)[-1]
+# bar = data.frame(smoking_status=rep("NA",2), foo)
+# data_train1_enh = rbind(data_train1, bar)
+# dim(data_train1_enh)
+# tail(data_train1_enh[,1:6])
+# dim(data_train1)
+# tail(data_train1[,1:6])
 ```
 
 L’ojectif maintenant est : 
@@ -82,21 +96,15 @@ réaliser autant d’ANOVA du type $probe \sim smoking_status$ qu’il y a de so
 siscreening = function(data_train) {
   probes = colnames(data_train)[5:10004]        # to be update
   pval_fisher = c()
-  beta1 = c()
-  beta2 = c()
   r2 = c()
   for (p in probes) {
     m = lm(data_train[,p]~data_train[,"smoking_status"])    
     pval_fisher = c(pval_fisher, anova(m)[1,5])  
-    beta1 = c(beta1, m$coefficients[[2]]) 
-    beta2 = c(beta2, m$coefficients[[3]]) 
     r2 = c(r2, summary(m)$r.squared)
   }
   names(pval_fisher)  = probes
-  names(beta1)         = probes  
-  names(beta2)         = probes  
   names(r2)           = probes  
-  return(data.frame(pval_fisher=pval_fisher, beta1=beta1, beta2=beta2, r2=r2))
+  return(data.frame(pval_fisher=pval_fisher, r2=r2))
 }
 if (!exists("msiscreening")) {msiscreening = memoise::memoise(siscreening)}
 
@@ -138,14 +146,15 @@ boxplot(data_train1[,sis_probes[6]]~data_train1[,"smoking_status"], main=paste0(
 
 
 
-5. Le code suivant réalise l’ACP de `data_train1` pour les 10 premières `sis_probes`.
-   Tracez le barycentre de chacun des trois groupes (`current`, `former`, `never`).
+5. Le code suivant réalise l’ACP de `data_train1` pour les 10 premières `sis_probes` et
+   tracez le barycentre de chacun des trois groupes (`current`, `former`, `never`).
    Commentez.
 
 
 ```{r}
 data = as.matrix(data_train1[, sis_probes[1:10]])
-col = as.numeric(data_train1$smoking_status)
+cols = as.numeric(data_train1$smoking_status)
+names(cols) = rownames(data_train1)
 pca = prcomp(data, scale=TRUE)
 v = pca$sdev * pca$sdev
 p = v / sum(v) * 100
@@ -153,21 +162,35 @@ layout(matrix(1:6,2, byrow=FALSE), respect=TRUE)
 barplot(p)
 i=3
 j=2
-plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=cols)
 i=1
 j=3
-plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=cols)
 i=1
 j=2
-plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=cols)
 i=4
 j=5
-plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=col)
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=cols)
 plot.new()
 legend("bottomright", levels(data_train1$smoking_status), pch=1, col=1:length(levels(data_train1$smoking_status)))
 ``` 
 
-6. Le code suivant construit plusieurs modèles prédisant la colonne `current01`. Commentez l’évolution de l’érreur.
+
+```{r}
+layout(1, respect=TRUE)
+i=1
+j=2
+plot(pca$x[,i], pca$x[,j], xlab=paste0("PC", i, "(", signif(p[i], 3), "%)"), ylab=paste0("PC", j, "(", signif(p[j], 3), "%)"), col=cols)
+for (col in unique(cols)) {
+  idx = names(cols)[cols==col]
+  points(mean(pca$x[idx,i]), mean(pca$x[idx,j]), col=adjustcolor(col, alpha.f=.9), pch=16, cex=3)
+  segments(pca$x[idx,i], pca$x[idx,j], rep(mean(pca$x[idx,i]), length(idx)), rep(mean(pca$x[idx,j]), length(idx)), col=adjustcolor(col, alpha.f=.3))
+}
+legend("bottomright", levels(data_train1$smoking_status), pch=16, col=1:length(levels(data_train1$smoking_status)))
+```
+
+6. Le code suivant construit plusieurs modèles prédisant la colonne `current01`. Commentez l’évolution de l’erreur.
 
   
 ```{r echo=TRUE, results="verbatim"}
@@ -177,40 +200,46 @@ model_sis_i = function(data_train, i, screening_func=msiscreening) {
   sis_probes = rownames(sis_res)[order(sis_res$pval_fisher)]
   formula = as.formula(paste0(c("current01~1", sis_probes[0:i]), collapse="+")) ; 
   # print(formula)
-  # foo = rbind(
-  #   c(0, 0 , 0, rep(0, 10000)),
-  #   c(0, 0 , 0, rep(1, 10000)),
-  #   c(1, 1 , 1, rep(0, 10000)),
-  #   c(1, 1 , 1, rep(1, 10000))
-  # )
-  # colnames(foo) = colnames(data_train)[-1]
-  # bar = data.frame(smoking_status=rep("never",4), foo)
-  # data_train_enh = rbind(data_train, bar)
-  data_train_enh = data_train
-  dim(data_train_enh)
-  m = glm(formula, data_train_enh, family=binomial(link="logit"))
+  dim(data_train)
+  m = glm(formula, data_train, family=binomial(link="logit"))
   return(m)
 }
 
-
-err1 = c()
-err2 = c()
-
-for (i in 1:50) {
-  print(i)
+# IAP: Incorrect Answers Proportion
+iap1 = c()
+iap2 = c()
+for (i in 0:50) {
   m = model_sis_i(data_train1, i)
   pred_train1 = predict.glm(m, data_train1, type="response")
   pred_train2 = predict.glm(m, data_train2, type="response")
-  err1 = c(err1, sum(ifelse(pred_train1>0.5, 1, 0) != data_train1$current01) / nrow(data_train1))
-  err2 = c(err2, sum(ifelse(pred_train2>0.5, 1, 0) != data_train2$current01) / nrow(data_train2))
+  iap1 = c(iap1, sum(ifelse(pred_train1>0.5, 1, 0) != data_train1$current01) / nrow(data_train1))
+  iap2 = c(iap2, sum(ifelse(pred_train2>0.5, 1, 0) != data_train2$current01) / nrow(data_train2))
 } 
 
-plot(err1)
-points(err2, col=2)
+layout(matrix(1:2,1), respect=TRUE)
+plot(iap1, col=4, pch=16, cex=2)
+points(iap2, col=2, pch=16, cex=2)
+legend("bottomright", c("iap1", "iap2"), col=c(4,2), pch=16, cex=2)
+i=30
+abline(v=i, col=2)
 
+
+# prediction on data_test
+m = model_sis_i(data_train, i)
+pred_test = predict.glm(m, data_test, type="response")
+plot(density(pred_test), main=paste0("i=", i))
+thresh = .65
+abline(v=thresh, col=2)
+data_test$current01 = ifelse(pred_test>thresh, 1, 0)
 ```
 
-7. En vous fondant sur ce code. Construisez un modèle qui prédit les colonnes `former01`, `never01`, puis `smoking_status`
+7. En vous fondant sur ce code, construisez un modèle qui prédit les colonnes `former01`, `never01`, puis `smoking_status`
+
+
+
+
+
+
 
 # Information de session
 
