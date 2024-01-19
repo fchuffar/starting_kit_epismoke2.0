@@ -8,10 +8,9 @@ This challenge aims to use statistical or machine learning models (e.g. linear m
 
 The challenge provides 2 data.frames (data_test and data_train, see below) corresponding to blood samples described by smoking status and DNA methylation values. The goal of this challenge is to predict the smoking status of patients. The methylation values are beta value (0<=beta<=1).
 
-Secret URL is: https://www.codabench.org/competitions/1809/?secret_key=a503da4b-9940-4f27-9e08-042c39ffe177
+The challenge is orchestrated by the Codabench platform, secret URL is: https://www.codabench.org/competitions/1809/?secret_key=a503da4b-9940-4f27-9e08-042c39ffe177
 
-
-An extented starting kit including a guided report there: https://github.com/fchuffar/starting_kit_epismoke2.0
+A presentation is also available there: https://youtu.be/TCeBoQ7DvwA
 
 We hope you will enjoy the challenge.
 
